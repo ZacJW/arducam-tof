@@ -1,0 +1,13 @@
+[package]
+name = "arducam-tof"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "1.0.63"
+
+[build-dependencies]
+bindgen = "0.69.4"
+
+[dev-dependencies]
+opencv = {version = "0.92.1", features = ["clang-runtime"]}
