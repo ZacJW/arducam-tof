@@ -15,6 +15,11 @@ fn main() {
         let depth_mat = opencv::core::Mat::new_rows_cols_with_data(depth.height() as i32, depth.width() as i32, depth.as_slice()).unwrap();
 
         opencv::highgui::imshow("depth", &depth_mat).unwrap();
-    }
 
+        let key = opencv::highgui::wait_key(10).unwrap();
+
+        if key == b'q' as i32 {
+            break;
+        }
+    }
 }
