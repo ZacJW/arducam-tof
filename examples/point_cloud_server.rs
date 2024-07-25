@@ -80,10 +80,6 @@ impl State for AppState {
 }
 
 fn main() {
-    let mut cam = arducam_tof::ArducamDepthCamera::new().unwrap();
-    cam.open(arducam_tof::Connection::CSI, 0).unwrap();
-    cam.start(arducam_tof::FrameType::DepthFrame).unwrap();
-
     let (sender, receiver) = std::sync::mpsc::channel::<Vec<MyPoint>>();
 
     std::thread::spawn(move|| tcp_thread(sender));

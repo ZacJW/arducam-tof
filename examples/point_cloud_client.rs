@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use bincode::Options;
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -22,6 +23,9 @@ fn main() {
 
     let mut points = Vec::new();
 
+    let options = bincode::DefaultOptions::new().allow_trailing_bytes();
+
+    let mut stream = bincode::Serializer::new(stream, options);
     loop {
         let frame = cam.request_frame(Some(Duration::from_millis(200))).unwrap();
 
@@ -42,7 +46,7 @@ fn main() {
             points.push(MyPoint {x, y, z});
         }
 
-        bincode::serialize_into(&mut stream, &points).unwrap();
+        points.serialize(&mut stream).unwrap();
 
         let depth_mat = opencv::core::Mat::new_rows_cols_with_data(depth.height() as i32, depth.width() as i32, depth.as_slice()).unwrap();
 
