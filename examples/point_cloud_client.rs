@@ -8,6 +8,7 @@ struct MyPoint {
     x: f32,
     y: f32,
     z: f32,
+    confidence: f32,
 }
 
 fn main() {
@@ -17,7 +18,7 @@ fn main() {
 
     let addr = std::env::args().nth(1).unwrap();
 
-    let mut stream = std::net::TcpStream::connect((addr, 8080)).unwrap();
+    let stream = std::net::TcpStream::connect((addr, 8080)).unwrap();
 
     opencv::highgui::named_window("depth", opencv::highgui::WINDOW_NORMAL).unwrap();
 
@@ -31,24 +32,40 @@ fn main() {
 
         let depth = frame.get_depth_data();
 
-        let pixels = depth.as_slice().iter().enumerate().map(|(i, d)| (i % depth.width() as usize, i / depth.width() as usize, d));
+        let confidence = frame.get_confidence_data();
 
-        let fx = depth.width() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 64.3 / 180.0));  // 640 / 2 / tan(0.5*64.3)
-        let fy = depth.height() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 50.4 / 180.0)); // 480 / 2 / tan(0.5*50.4)
+        assert!(depth.width() == confidence.width());
+        assert!(depth.height() == confidence.height());
+
+        let pixels = depth
+            .as_slice()
+            .iter()
+            .enumerate()
+            .zip(confidence.as_slice())
+            .map(|((i, d), c)| (i % depth.width() as usize, i / depth.width() as usize, d, c));
+
+        let fx = depth.width() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 64.3 / 180.0)); // 640 / 2 / tan(0.5*64.3)
+        let fy =
+            depth.height() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 50.4 / 180.0)); // 480 / 2 / tan(0.5*50.4)
 
         points.clear();
 
-        for (row, column, d) in pixels {
+        for (row, column, d, c) in pixels {
             let z = *d;
-            let x = ((((depth.width() / 2) as f32 - column as f32)) / fx) * z;
+            let x = (((depth.width() / 2) as f32 - column as f32) / fx) * z;
             let y = (((depth.height() / 2) as f32 - row as f32) / fy) * z;
 
-            points.push(MyPoint {x, y, z});
+            points.push(MyPoint { x, y, z, confidence: *c });
         }
 
         points.serialize(&mut stream).unwrap();
 
-        let depth_mat = opencv::core::Mat::new_rows_cols_with_data(depth.height() as i32, depth.width() as i32, depth.as_slice()).unwrap();
+        let depth_mat = opencv::core::Mat::new_rows_cols_with_data(
+            depth.height() as i32,
+            depth.width() as i32,
+            depth.as_slice(),
+        )
+        .unwrap();
 
         opencv::highgui::imshow("depth", &depth_mat).unwrap();
 

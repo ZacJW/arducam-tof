@@ -31,8 +31,8 @@ struct MyPoint {
     x: f32,
     y: f32,
     z: f32,
+    confidence: f32,
 }
-
 
 struct AppState {
     point_cloud_renderer: PointCloudRenderer,
@@ -58,9 +58,17 @@ impl State for AppState {
             Ok(points) => {
                 self.point_cloud_renderer.clear();
                 for point in points {
-                    self.point_cloud_renderer.push(Point3::new(point.x, point.y, point.z), Point3::new(1.0, 1.0, 1.0));
+                    let brightness = if point.confidence > 1.0 {
+                        1.0 / point.confidence
+                    } else {
+                        1.0
+                    };
+                    self.point_cloud_renderer.push(
+                        Point3::new(point.x, point.y, point.z),
+                        Point3::new(brightness, brightness, brightness),
+                    );
                 }
-            },
+            }
             Err(TryRecvError::Empty) => (),
             Err(TryRecvError::Disconnected) => std::process::exit(1),
         }
@@ -82,12 +90,12 @@ impl State for AppState {
 fn main() {
     let (sender, receiver) = std::sync::mpsc::channel::<Vec<MyPoint>>();
 
-    std::thread::spawn(move|| tcp_thread(sender));
+    std::thread::spawn(move || tcp_thread(sender));
 
     let window = Window::new("Kiss3d: persistent_point_cloud");
     let app = AppState {
         point_cloud_renderer: PointCloudRenderer::new(4.0),
-        receiver
+        receiver,
     };
 
     window.render_loop(app)
@@ -192,9 +200,14 @@ fn tcp_thread(sender: Sender<Vec<MyPoint>>) {
     let listener = std::net::TcpListener::bind("0.0.0.0:8080").unwrap();
     let stream = listener.accept().unwrap().0;
 
-    let mut stream = bincode::de::Deserializer::with_reader(stream, DefaultOptions::new().allow_trailing_bytes());
+    let mut stream = bincode::de::Deserializer::with_reader(
+        stream,
+        DefaultOptions::new().allow_trailing_bytes(),
+    );
 
     loop {
-        sender.send(Vec::<MyPoint>::deserialize(&mut stream).unwrap()).unwrap();
+        sender
+            .send(Vec::<MyPoint>::deserialize(&mut stream).unwrap())
+            .unwrap();
     }
 }
