@@ -77,18 +77,18 @@ impl ArducamDepthCamera {
         }
     }
 
-    pub fn get_info(&self) -> CameraInfo {
-        let info = unsafe { raw::arducamCameraGetInfo(self.inner.as_ptr()) };
-        CameraInfo {
-            connection: info.connect.try_into().unwrap(),
-            device_type: info.device_type.try_into().unwrap(),
-            frame_type: info.type_.try_into().unwrap(),
-            width: info.width,
-            height: info.height,
-            bit_width: info.bit_width,
-            bpp: info.bpp,
-        }
-    }
+    // pub fn get_info(&self) -> CameraInfo {
+    //     let info = unsafe { raw::arducamCameraGetInfo(self.inner.as_ptr()) };
+    //     CameraInfo {
+    //         connection: info.connect.try_into().unwrap(),
+    //         device_type: info.device_type.try_into().unwrap(),
+    //         frame_type: info.type_.try_into().unwrap(),
+    //         width: info.width,
+    //         height: info.height,
+    //         bit_width: info.bit_width,
+    //         bpp: info.bpp,
+    //     }
+    // }
 
     pub fn close(&mut self) -> Result<(), CloseError> {
         let status = unsafe {
@@ -186,10 +186,10 @@ impl<'a> ArducamFrameBuffer<'a> {
     }
 
     pub fn get_confidence_data<'b>(&'b self) -> FrameData<'b, f32> {
-        let data = unsafe { raw::arducamCameraGetConfidenceData(self.inner.as_ptr()) };
+        let data = unsafe { raw::arducamCameraGetAmplitudeData(self.inner.as_ptr()) }; // 0.1.3 called confidence amplitude
 
         if data.is_null() {
-            panic!("Got null pointer from arducamCameraGetConfidenceData");
+            panic!("Got null pointer from arducamCameraGetAmplitudeData");
         }
 
         let format = self.get_format(FrameType::ConfidenceFrame);
@@ -312,9 +312,9 @@ make_enum_from_c! {
     #[derive(Debug)]
     pub enum FrameType: raw::ArducamFrameType {
         RawFrame => raw::ArducamFrameType_RAW_FRAME,
-        ConfidenceFrame => raw::ArducamFrameType_CONFIDENCE_FRAME,
+        ConfidenceFrame => raw::ArducamFrameType_AMPLITUDE_FRAME, // 0.1.3 called confidence amplitude
         DepthFrame => raw::ArducamFrameType_DEPTH_FRAME,
-        CacheFrame => raw::ArducamFrameType_CACHE_FRAME,
+        // CacheFrame => raw::ArducamFrameType_CACHE_FRAME, // 0.1.3 has no cache frame variant
     }
     #[derive(Debug, Error)]
     #[error("Invalid frame type: {0}")]
@@ -323,36 +323,38 @@ make_enum_from_c! {
 
 make_enum_from_c! {
     #[derive(Debug)]
-    pub enum Connection: raw::ArducamConnection {
-        CSI => raw::ArducamConnection_CSI,
-        USB => raw::ArducamConnection_USB,
+    pub enum Connection: raw::ArducamCameraConn {
+        CSI => raw::ArducamCameraConn_CSI,
+        USB => raw::ArducamCameraConn_USB,
     }
     #[derive(Debug, Error)]
     #[error("Invalid connection type: {0}")]
     invalid_type = pub struct InvalidConnectionType;
 }
 
-make_enum_from_c! {
-    #[derive(Debug)]
-    pub enum DeviceType: raw::ArducamDeviceType {
-        VGA => raw::ArducamDeviceType_ARDUCAM_DEVICE_VGA,
-        HQVGA => raw::ArducamDeviceType_ARDUCAM_DEVICE_HQVGA,
-    }
-    #[derive(Debug, Error)]
-    #[error("Invalid device type: {0}")]
-    invalid_type = pub struct InvalidDeviceType;
-}
+// 0.1.3 has no device type
+// make_enum_from_c! {
+//     #[derive(Debug)]
+//     pub enum DeviceType: raw::ArducamDeviceType {
+//         VGA => raw::ArducamDeviceType_ARDUCAM_DEVICE_VGA,
+//         HQVGA => raw::ArducamDeviceType_ARDUCAM_DEVICE_HQVGA,
+//     }
+//     #[derive(Debug, Error)]
+//     #[error("Invalid device type: {0}")]
+//     invalid_type = pub struct InvalidDeviceType;
+// }
 
-#[derive(Debug)]
-pub struct CameraInfo {
-    pub connection: Connection,
-    pub device_type: DeviceType,
-    pub frame_type: FrameType,
-    pub width: u32,
-    pub height: u32,
-    pub bit_width: u32,
-    pub bpp: u32,
-}
+// 0.1.3 doesn't have get_info so this type isn't used
+// #[derive(Debug)]
+// pub struct CameraInfo {
+//     pub connection: Connection,
+//     pub device_type: DeviceType,
+//     pub frame_type: FrameType,
+//     pub width: u32,
+//     pub height: u32,
+//     pub bit_width: u32,
+//     pub bpp: u32,
+// }
 
 pub struct ArducamFrameFormat {
     pub width: u16,

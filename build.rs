@@ -4,7 +4,7 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=ArducamDepthCamera2c");
 
     let bindings = bindgen::Builder::default()
-        .header("ArducamDepthCamera.h")
+        .header("ArducamDepthCamera 0.1.3.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");
