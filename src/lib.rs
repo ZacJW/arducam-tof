@@ -296,7 +296,7 @@ macro_rules! make_enum_from_c {
         impl TryFrom<$c_type> for $type_name {
             type Error = $error_name;
 
-            fn try_from(value: raw::ArducamDeviceType) -> Result<Self, Self::Error> {
+            fn try_from(value: $c_type) -> Result<Self, Self::Error> {
                 match value {
                     $(
                         x if x == $c_value => Ok($type_name::$variant_name),
