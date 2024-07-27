@@ -1,8 +1,9 @@
 extern crate kiss3d;
 extern crate nalgebra as na;
 
+use std::io::{BufRead, BufReader, Write};
+use std::ops::RangeInclusive;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
-use std::time::Duration;
 
 use bincode::{DefaultOptions, Options};
 use kiss3d::camera::Camera;
@@ -15,7 +16,7 @@ use kiss3d::resource::{
 };
 use kiss3d::text::Font;
 use kiss3d::window::{State, Window};
-use na::{Matrix4, Point2, Point3, Vector3};
+use na::{Matrix4, Point2, Point3};
 use serde::Deserialize;
 
 // Custom renderers are used to allow rendering objects that are not necessarily
@@ -36,7 +37,11 @@ struct MyPoint {
 
 struct AppState {
     point_cloud_renderer: PointCloudRenderer,
-    receiver: Receiver<Vec<MyPoint>>,
+    point_receiver: Receiver<Vec<MyPoint>>,
+    command_receiver: Receiver<Command>,
+    max_depth: Option<f32>,
+    min_depth: Option<f32>,
+    confidence_range: Option<RangeInclusive<f32>>,
 }
 
 impl State for AppState {
@@ -54,19 +59,56 @@ impl State for AppState {
     }
 
     fn step(&mut self, window: &mut Window) {
-        match self.receiver.try_recv() {
+        match self.command_receiver.try_recv() {
+            Ok(Command::SetMaxDepth(max_depth)) => self.max_depth = max_depth,
+            Ok(Command::SetMinDepth(min_depth)) => self.min_depth = min_depth,
+            Ok(Command::SetConfidenceRange(confidence_range)) => {
+                self.confidence_range = confidence_range
+            }
+            Err(TryRecvError::Empty) => (),
+            Err(TryRecvError::Disconnected) => std::process::exit(2),
+        }
+
+        match self.point_receiver.try_recv() {
             Ok(points) => {
                 self.point_cloud_renderer.clear();
                 for point in points {
-                    let brightness = if point.confidence > 1.0 {
-                        1.0 / point.confidence
-                    } else {
-                        1.0
+                    if self.max_depth.is_some_and(|max_depth| point.z > max_depth)
+                        || self.min_depth.is_some_and(|min_depth| point.z < min_depth)
+                    {
+                        continue;
+                    }
+
+                    let colour = match &self.confidence_range {
+                        Some(range) => {
+                            let low = *range.start();
+                            let high = *range.end();
+
+                            if low < high {
+                                if point.confidence < low {
+                                    Point3::new(1.0, 0.0, 0.0)
+                                } else if point.confidence > high {
+                                    Point3::new(0.0, 1.0, 0.0)
+                                } else {
+                                    let confidence = (point.confidence - low) / (high - low);
+                                    Point3::new(1.0 - confidence, confidence, 0.0)
+                                }
+                            } else {
+                                if point.confidence > low {
+                                    Point3::new(1.0, 0.0, 0.0)
+                                } else if point.confidence < high {
+                                    Point3::new(0.0, 1.0, 0.0)
+                                } else {
+                                    let confidence = (point.confidence - low) / (high - low);
+                                    Point3::new(1.0 - confidence, confidence, 0.0)
+                                }
+                            }
+                        }
+                        None => Point3::new(1.0, 1.0, 1.0),
                     };
-                    self.point_cloud_renderer.push(
-                        Point3::new(point.x, point.y, point.z),
-                        Point3::new(brightness, brightness, brightness),
-                    );
+
+                    self.point_cloud_renderer
+                        .push(Point3::new(point.x, point.y, point.z), colour);
                 }
             }
             Err(TryRecvError::Empty) => (),
@@ -88,14 +130,22 @@ impl State for AppState {
 }
 
 fn main() {
-    let (sender, receiver) = std::sync::mpsc::channel::<Vec<MyPoint>>();
+    let (point_sender, point_receiver) = std::sync::mpsc::channel::<Vec<MyPoint>>();
 
-    std::thread::spawn(move || tcp_thread(sender));
+    std::thread::spawn(move || tcp_thread(point_sender));
+
+    let (command_sender, command_receiver) = std::sync::mpsc::channel::<Command>();
+
+    std::thread::spawn(move || control_thread(command_sender));
 
     let window = Window::new("Kiss3d: persistent_point_cloud");
     let app = AppState {
         point_cloud_renderer: PointCloudRenderer::new(4.0),
-        receiver,
+        point_receiver,
+        command_receiver,
+        max_depth: None,
+        min_depth: None,
+        confidence_range: None,
     };
 
     window.render_loop(app)
@@ -209,5 +259,74 @@ fn tcp_thread(sender: Sender<Vec<MyPoint>>) {
         sender
             .send(Vec::<MyPoint>::deserialize(&mut stream).unwrap())
             .unwrap();
+    }
+}
+
+enum Command {
+    SetMaxDepth(Option<f32>),
+    SetMinDepth(Option<f32>),
+    SetConfidenceRange(Option<RangeInclusive<f32>>),
+}
+
+fn control_thread(sender: Sender<Command>) {
+    let mut stdin = BufReader::new(std::io::stdin());
+    let mut stdout = std::io::stdout();
+    let mut input = String::new();
+    loop {
+        input.clear();
+        print!("\n> ");
+        let _ = stdout.flush();
+        stdin.read_line(&mut input).unwrap();
+        let input = input.trim();
+
+        match input {
+            "" => (),
+            "clear max depth" => sender.send(Command::SetMaxDepth(None)).unwrap(),
+            "clear min depth" => sender.send(Command::SetMinDepth(None)).unwrap(),
+            "clear confidence range" => sender.send(Command::SetConfidenceRange(None)).unwrap(),
+            input if input.starts_with("set max depth ") => {
+                let max_depth = input.strip_prefix("set max depth ").unwrap();
+                match max_depth.parse::<f32>() {
+                    Ok(max_depth) => sender.send(Command::SetMaxDepth(Some(max_depth))).unwrap(),
+                    Err(e) => println!("{e}"),
+                }
+            }
+            input if input.starts_with("set min depth ") => {
+                let min_depth = input.strip_prefix("set min depth ").unwrap();
+                match min_depth.parse::<f32>() {
+                    Ok(min_depth) => sender.send(Command::SetMinDepth(Some(min_depth))).unwrap(),
+                    Err(e) => println!("{e}"),
+                }
+            }
+            input if input.starts_with("set confidence range ") => {
+                let range = input.strip_prefix("set confidence range ").unwrap();
+                let Some((low, high)) = range.split_once(' ') else {
+                    println!("set confidence range <LOW> <HIGH>");
+                    continue;
+                };
+
+                let low = match low.parse::<f32>() {
+                    Ok(low) => low,
+                    Err(e) => {
+                        println!("Bad lower bound: {e}");
+                        continue;
+                    }
+                };
+
+                let high = match high.parse::<f32>() {
+                    Ok(high) => high,
+                    Err(e) => {
+                        println!("Bad higher bound: {e}");
+                        continue;
+                    }
+                };
+
+                sender
+                    .send(Command::SetConfidenceRange(Some(low..=high)))
+                    .unwrap()
+            }
+
+            _ => println!("Unrecognised input"),
+        }
     }
 }
