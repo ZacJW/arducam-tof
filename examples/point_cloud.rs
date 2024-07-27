@@ -44,22 +44,31 @@ impl State for AppState {
     }
 
     fn step(&mut self, window: &mut Window) {
-        let frame = self.cam.request_frame(Some(Duration::from_millis(100))).unwrap();
+        let frame = self
+            .cam
+            .request_frame(Some(Duration::from_millis(100)))
+            .unwrap();
         let depth = frame.get_depth_data();
 
         self.point_cloud_renderer.clear();
 
-        let pixels = depth.as_slice().iter().enumerate().map(|(i, d)| (i % depth.width() as usize, i / depth.width() as usize, d));
+        let pixels = depth
+            .as_slice()
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (i % depth.width() as usize, i / depth.width() as usize, d));
 
-        let fx = depth.width() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 64.3 / 180.0));  // 640 / 2 / tan(0.5*64.3)
-        let fy = depth.height() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 50.4 / 180.0)); // 480 / 2 / tan(0.5*50.4)
+        let fx = depth.width() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 64.3 / 180.0)); // 640 / 2 / tan(0.5*64.3)
+        let fy =
+            depth.height() as f32 / (2.0 * f32::tan(0.5 * std::f32::consts::PI * 50.4 / 180.0)); // 480 / 2 / tan(0.5*50.4)
 
         for (row, column, d) in pixels {
             let zz = *d;
-            let xx = ((((depth.width() / 2) as f32 - column as f32)) / fx) * zz;
+            let xx = (((depth.width() / 2) as f32 - column as f32) / fx) * zz;
             let yy = (((depth.height() / 2) as f32 - row as f32) / fy) * zz;
 
-            self.point_cloud_renderer.push(Point3::new(xx,yy,zz), Point3::new(1.0, 1.0, 1.0));
+            self.point_cloud_renderer
+                .push(Point3::new(xx, yy, zz), Point3::new(1.0, 1.0, 1.0));
         }
 
         let num_points_text = format!(

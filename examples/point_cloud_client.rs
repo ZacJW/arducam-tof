@@ -55,7 +55,12 @@ fn main() {
             let x = (((depth.width() / 2) as f32 - column as f32) / fx) * z;
             let y = (((depth.height() / 2) as f32 - row as f32) / fy) * z;
 
-            points.push(MyPoint { x, y, z, confidence: *c });
+            points.push(MyPoint {
+                x,
+                y,
+                z,
+                confidence: *c,
+            });
         }
 
         points.serialize(&mut stream).unwrap();
